@@ -202,6 +202,8 @@ def connect_wifi():
 			a=a+1
 			time.sleep_ms(10)
 		if sta_if.isconnected():
+			ap = network.WLAN(network.AP_IF)
+			ap.active(False)
 			print('network config:', sta_if.ifconfig())
 			disp.clear()
 			disp.show_text("connected to",0,0,)

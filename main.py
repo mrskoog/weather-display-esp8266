@@ -32,6 +32,11 @@ class Display:
 		self.oled.fill(0)
 		self.oled.show()
 
+	def clear_text_row(self, y_pos):
+		for y in range(0, 8):
+			self.oled.hline(0, (y_pos * 8) + y, 16 * 8, False)
+		self.oled.show()
+
 	def show_bit_image(self,image, x_pos, y_pos, size_x, size_y, inv=False):
 		x = 0
 		y = 0
@@ -49,17 +54,23 @@ class Weather():
 	def __init__(self, location, openweather_id):
 		self.location = location
 		self.openweather_id = openweather_id
-		self.morning_temp = '0'
-		self.day_temp = '0'
-		self.evening_temp = '0'
+		self.morning_temp = "0"
+		self.day_temp = "0"
+		self.evening_temp = "0"
 		self.wind = "0"
 		self.cloud = "0"
-		self.forcast_weather = 'none'
+		self.current_weather = "none"
+		self.text_too_long = False
+		self.scroll_position = 0
 
 	def update(self):
 		data = urequests.get("http://api.openweathermap.org/data/2.5/forecast/daily?q="+self.location+"&units=metric&appid="+self.openweather_id+"&cnt=1").json()
 		if data['cod'] is "200":
 			self.current_weather = data['list'][0]['weather'][0]['description']
+			if len(self.current_weather) > 16:
+				self.text_too_long = True
+			else:
+				self.text_too_long = False
 			self.current_weather = self.current_weather[0].upper() + self.current_weather[1:]
 			self.morning_temp = str(round(data['list'][0]['temp']['morn']))
 			self.day_temp = str(round(data['list'][0]['temp']['day']))
@@ -106,6 +117,10 @@ class Weather():
 		disp.show_bit_image(icons.wind,9*8-1,3*8,16,8)
 		disp.show_text(self.wind+"m/s",11,3)
 
+	def scroll_description_text(self):
+		disp.clear_text_row(0)
+		self.scroll_position = (self.scroll_position + 1) % len(self.current_weather)
+		disp.show_text(self.current_weather[self.scroll_position:self.scroll_position+16],0,0)
 
 
 class Web_server():
@@ -220,9 +235,14 @@ def connect_wifi():
 
 def ISR_time(t):
 	global minutes
-	minutes = minutes + 1
+	global seconds
+	seconds = seconds + 1
+	if seconds >= 59:
+		minutes = minutes + 1
+		seconds = 0
 
 minutes = 0
+seconds = 0
 disp = Display(0, 2)
 if connect_wifi():
 	weather = Weather(config.LOCATION,config.OPENWEATHER_ID)
@@ -232,13 +252,17 @@ if connect_wifi():
 web_server =Web_server()
 
 tim = machine.Timer(-1)
-tim.init(period=60000, mode=machine.Timer.PERIODIC, callback=ISR_time)
+tim.init(period=1000, mode=machine.Timer.PERIODIC, callback=ISR_time)
+
+old_seconds = seconds
 
 while True:
 	web_server.poll()
+	if weather.text_too_long == True and old_seconds != seconds:
+		weather.scroll_description_text()
+		old_seconds = seconds
 	if minutes >= 60:
 		minutes = 0
 		print("update")
 		if weather.update():
 			weather.display()
-
